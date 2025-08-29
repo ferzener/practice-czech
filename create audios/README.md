@@ -1,0 +1,1 @@
+You just need a words.json file just as the one in the czech1 directory then you can run this with python3 main.py should work fine.
