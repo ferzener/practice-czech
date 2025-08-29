@@ -1,92 +1,100 @@
 <?php
 // index.php
 declare(strict_types=1);
-mb_internal_encoding('UTF-8');
+mb_internal_encoding("UTF-8");
 session_start();
 
-$WORDS_FILE  = __DIR__ . '/words.json';
-$AUDIOS_FILE = dirname(__DIR__) . '/audios.json'; // one level up from czech1/
+$WORDS_FILE = __DIR__ . "/words.json";
+$AUDIOS_FILE = dirname(__DIR__) . "/audios.json"; // one level up from czech1/
 
-function h(string $s): string {
-    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+function h(string $s): string
+{
+    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
 }
-function normalize_answer(string $s): string {
+function normalize_answer(string $s): string
+{
     $s = mb_strtolower(trim($s));
-    $s = preg_replace('/^(the|a|an)\s+/u', '', $s);
+    $s = preg_replace("/^(the|a|an)\s+/u", "", $s);
     $s = trim($s, " \t\n\r\0\x0B.,;:!?()[]{}\"'");
-    $s = preg_replace('/\s+/u', ' ', $s);
-    return $s ?? '';
+    $s = preg_replace("/\s+/u", " ", $s);
+    return $s ?? "";
 }
 
 // ---- load dictionary ----
 if (!file_exists($WORDS_FILE)) {
     http_response_code(500);
     echo "<h1>Error</h1><p><code>words.json</code> not found.</p>";
-    exit;
+    exit();
 }
 $json = file_get_contents($WORDS_FILE);
 $dict = json_decode($json, true, flags: JSON_OBJECT_AS_ARRAY);
 if (!is_array($dict) || empty($dict)) {
     http_response_code(500);
     echo "<h1>Error</h1><p>Could not read a valid dictionary from <code>words.json</code>.</p>";
-    exit;
+    exit();
 }
 
 // load audio map
 $audioMap = [];
 if (file_exists($AUDIOS_FILE)) {
     $jsonAudios = file_get_contents($AUDIOS_FILE);
-    $audioMap = json_decode($jsonAudios, true, flags: JSON_OBJECT_AS_ARRAY) ?? [];
+    $audioMap =
+        json_decode($jsonAudios, true, flags: JSON_OBJECT_AS_ARRAY) ?? [];
 }
 
 // ---- parse URL params ok/nok ----
-$okList  = isset($_GET['ok'])  ? json_decode($_GET['ok'], true)  : [];
-$nokList = isset($_GET['nok']) ? json_decode($_GET['nok'], true) : [];
-if (!is_array($okList))  $okList  = [];
-if (!is_array($nokList)) $nokList = [];
+$okList = isset($_GET["ok"]) ? json_decode($_GET["ok"], true) : [];
+$nokList = isset($_GET["nok"]) ? json_decode($_GET["nok"], true) : [];
+if (!is_array($okList)) {
+    $okList = [];
+}
+if (!is_array($nokList)) {
+    $nokList = [];
+}
 
 // ---- pick/advance word ----
-if (!isset($_SESSION['current_key']) || isset($_POST['next'])) {
+if (!isset($_SESSION["current_key"]) || isset($_POST["next"])) {
     // candidate words = all - okList
     $keys = array_keys($dict);
     $candidates = array_values(array_diff($keys, $okList));
 
     if (count($candidates) > 0) {
-        $_SESSION['current_key'] = $candidates[random_int(0, count($candidates) - 1)];
+        $_SESSION["current_key"] =
+            $candidates[random_int(0, count($candidates) - 1)];
     } else {
-        $_SESSION['current_key'] = null; // all done
+        $_SESSION["current_key"] = null; // all done
     }
 
-    $_SESSION['answered'] = false;
-    $_SESSION['is_correct'] = null;
-    $_SESSION['user_answer'] = '';
+    $_SESSION["answered"] = false;
+    $_SESSION["is_correct"] = null;
+    $_SESSION["user_answer"] = "";
 }
-$currentKey = $_SESSION['current_key'];
-$answers = $currentKey ? ($dict[$currentKey] ?? []) : [];
+$currentKey = $_SESSION["current_key"];
+$answers = $currentKey ? $dict[$currentKey] ?? [] : [];
 
 // ---- audio ----
 $audioSrc = null;
 if ($currentKey && isset($audioMap[$currentKey])) {
-    $file = trim((string)$audioMap[$currentKey]);
-    $audioSrc = '/audios/' . basename($file);
+    $file = trim((string) $audioMap[$currentKey]);
+    $audioSrc = "/audios/" . basename($file);
 }
 
 // ---- handle answer ----
-if ($currentKey && isset($_POST['answer']) && $_SESSION['answered'] !== true) {
-    $userAnswer = (string)($_POST['answer'] ?? '');
-    $_SESSION['user_answer'] = $userAnswer;
+if ($currentKey && isset($_POST["answer"]) && $_SESSION["answered"] !== true) {
+    $userAnswer = (string) ($_POST["answer"] ?? "");
+    $_SESSION["user_answer"] = $userAnswer;
 
     $normUser = normalize_answer($userAnswer);
     $isCorrect = false;
     foreach ($answers as $a) {
-        if ($normUser !== '' && normalize_answer((string)$a) === $normUser) {
+        if ($normUser !== "" && normalize_answer((string) $a) === $normUser) {
             $isCorrect = true;
             break;
         }
     }
 
-    $_SESSION['answered'] = true;
-    $_SESSION['is_correct'] = $isCorrect;
+    $_SESSION["answered"] = true;
+    $_SESSION["is_correct"] = $isCorrect;
 
     if ($isCorrect) {
         if (!in_array($currentKey, $okList, true)) {
@@ -102,18 +110,18 @@ if ($currentKey && isset($_POST['answer']) && $_SESSION['answered'] !== true) {
 
     // redirect com nova URL
     $qs = http_build_query([
-        'ok'  => json_encode($okList, JSON_UNESCAPED_UNICODE),
-        'nok' => json_encode($nokList, JSON_UNESCAPED_UNICODE)
+        "ok" => json_encode($okList, JSON_UNESCAPED_UNICODE),
+        "nok" => json_encode($nokList, JSON_UNESCAPED_UNICODE),
     ]);
-    $base = strtok($_SERVER['REQUEST_URI'], '?');
+    $base = strtok($_SERVER["REQUEST_URI"], "?");
     header("Location: $base?$qs");
-    exit;
+    exit();
 }
 
 // ---- view state ----
-$answered   = $_SESSION['answered'] ?? false;
-$isCorrect  = $_SESSION['is_correct'] ?? null;
-$userAnswer = $_SESSION['user_answer'] ?? '';
+$answered = $_SESSION["answered"] ?? false;
+$isCorrect = $_SESSION["is_correct"] ?? null;
+$userAnswer = $_SESSION["user_answer"] ?? "";
 ?>
 <!doctype html>
 <html lang="en">
@@ -163,7 +171,7 @@ $userAnswer = $_SESSION['user_answer'] ?? '';
 
       <form method="post" class="row" autocomplete="off">
         <input type="text" name="answer" placeholder="Your meaning in English"
-               value="<?= h($userAnswer) ?>" <?= $answered ? 'disabled' : '' ?>>
+               value="<?= h($userAnswer) ?>" <?= $answered ? "disabled" : "" ?>>
         <?php if (!$answered): ?>
           <button type="submit" class="primary">Check</button>
         <?php endif; ?>
@@ -190,13 +198,33 @@ $userAnswer = $_SESSION['user_answer'] ?? '';
         </form>
       <?php endif; ?>
 
-    <?php
-    $totalWords = count($dict);
-    $correctCount = count($okList);
-    ?>
-    <div class="muted" style="margin-top:20px">
-      📊 You got <?= $correctCount ?> / <?= $totalWords ?> words
-    </div>
+<?php
+$totalWords = count($dict);
+$correctCount = count($okList);
+$currentUrl =
+    (isset($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] === "on"
+        ? "https"
+        : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
+?>
+<div class="muted" style="margin-top:20px">
+  📊 You got <?= $correctCount ?> / <?= $totalWords ?> words
+</div>
+
+<button type="button" id="copyLinkBtn" class="primary" style="margin-top:10px">
+  📎 Continue from here
+</button>
+<span id="copyMsg" class="muted" style="margin-left:10px; display:none;">Link copied ✅</span>
+
+<script>
+document.getElementById('copyLinkBtn').addEventListener('click', function() {
+  const url = <?= json_encode($currentUrl) ?>;
+  navigator.clipboard.writeText(url).then(() => {
+    document.getElementById('copyMsg').style.display = 'inline';
+    setTimeout(() => { document.getElementById('copyMsg').style.display = 'none'; }, 2000);
+  });
+});
+</script>
+
 
     <?php endif; ?>
   </div>
