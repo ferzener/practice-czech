@@ -4,12 +4,13 @@ declare(strict_types=1);
 mb_internal_encoding('UTF-8');
 session_start();
 
-$WORDS_FILE = __DIR__ . '/words.json';
+$WORDS_FILE  = __DIR__ . '/words.json';
+$AUDIOS_FILE = dirname(__DIR__) . '/audios.json'; // one level up from czech1/
 
 // Load dictionary
 if (!file_exists($WORDS_FILE)) {
     http_response_code(500);
-    echo "<h1>Error</h1><p><code>words.json</code> not found in the same folder.</p>";
+    echo "<h1>Error</h1><p><code>words.json</code> not found.</p>";
     exit;
 }
 
@@ -20,6 +21,13 @@ if (!is_array($dict) || empty($dict)) {
     http_response_code(500);
     echo "<h1>Error</h1><p>Could not read a valid dictionary from <code>words.json</code>.</p>";
     exit;
+}
+
+// Load audio map
+$audioMap = [];
+if (file_exists($AUDIOS_FILE)) {
+    $jsonAudios = file_get_contents($AUDIOS_FILE);
+    $audioMap = json_decode($jsonAudios, true, flags: JSON_OBJECT_AS_ARRAY) ?? [];
 }
 
 // Normalize answers (case-insensitive, ignores a/an/the, trims punctuation)
@@ -42,6 +50,13 @@ if (!isset($_SESSION['current_key']) || isset($_POST['next'])) {
 
 $currentKey = $_SESSION['current_key'];
 $answers = $dict[$currentKey] ?? [];
+
+// Resolve audio src
+$audioSrc = null;
+if (isset($audioMap[$currentKey])) {
+    $file = trim((string)$audioMap[$currentKey]);
+    $audioSrc = '/audios/' . basename($file); // URL for browser
+}
 
 // Handle submission
 if (isset($_POST['answer']) && $_SESSION['answered'] !== true) {
@@ -83,7 +98,7 @@ $userAnswer = $_SESSION['user_answer'] ?? '';
     body { margin: 24px; }
     .card { max-width: 720px; margin: 0 auto; padding: 24px; border: 1px solid #ddd; border-radius: 16px; box-shadow: 0 3px 12px rgba(0,0,0,0.06); }
     h1 { margin-top: 0; font-size: 1.4rem; }
-    .cz { font-size: 2rem; font-weight: 700; margin: 12px 0 4px; }
+    .cz { font-size: 2rem; font-weight: 700; margin: 12px 0 4px; display: flex; align-items: center; gap: 10px; }
     .hint { color: #666; margin-bottom: 16px; }
     .row { display: flex; gap: 8px; }
     input[type="text"] { flex: 1; padding: 12px; font-size: 1rem; border-radius: 10px; border: 1px solid #ccc; }
@@ -97,13 +112,21 @@ $userAnswer = $_SESSION['user_answer'] ?? '';
     .muted { color: #666; font-size: .9rem; }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .chip { padding: 6px 10px; border-radius: 999px; background: #f1f1f1; font-size: .9rem; }
+    .icon { padding: 6px 10px; line-height: 1; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Czech → English Vocabulary Trainer</h1>
 
-    <div class="cz"><?= h($currentKey) ?></div>
+    <div class="cz">
+      <?= h($currentKey) ?>
+      <?php if ($audioSrc !== null): ?>
+        <button type="button" class="icon" aria-label="Play pronunciation"
+          onclick="(function(){var a=document.getElementById('cz-audio'); if(a){a.currentTime=0; a.play();}})()">🔊</button>
+        <audio id="cz-audio" src="<?= h($audioSrc) ?>"></audio>
+      <?php endif; ?>
+    </div>
     <div class="hint muted">Type a valid English meaning.</div>
 
     <form method="post" class="row" autocomplete="off">
