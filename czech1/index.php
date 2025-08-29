@@ -7,30 +7,9 @@ session_start();
 $WORDS_FILE  = __DIR__ . '/words.json';
 $AUDIOS_FILE = dirname(__DIR__) . '/audios.json'; // one level up from czech1/
 
-// Load dictionary
-if (!file_exists($WORDS_FILE)) {
-    http_response_code(500);
-    echo "<h1>Error</h1><p><code>words.json</code> not found.</p>";
-    exit;
+function h(string $s): string {
+    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
-
-$json = file_get_contents($WORDS_FILE);
-$dict = json_decode($json, true, flags: JSON_OBJECT_AS_ARRAY);
-
-if (!is_array($dict) || empty($dict)) {
-    http_response_code(500);
-    echo "<h1>Error</h1><p>Could not read a valid dictionary from <code>words.json</code>.</p>";
-    exit;
-}
-
-// Load audio map
-$audioMap = [];
-if (file_exists($AUDIOS_FILE)) {
-    $jsonAudios = file_get_contents($AUDIOS_FILE);
-    $audioMap = json_decode($jsonAudios, true, flags: JSON_OBJECT_AS_ARRAY) ?? [];
-}
-
-// Normalize answers (case-insensitive, ignores a/an/the, trims punctuation)
 function normalize_answer(string $s): string {
     $s = mb_strtolower(trim($s));
     $s = preg_replace('/^(the|a|an)\s+/u', '', $s);
@@ -39,33 +18,66 @@ function normalize_answer(string $s): string {
     return $s ?? '';
 }
 
-// Pick/advance word
+// ---- load dictionary ----
+if (!file_exists($WORDS_FILE)) {
+    http_response_code(500);
+    echo "<h1>Error</h1><p><code>words.json</code> not found.</p>";
+    exit;
+}
+$json = file_get_contents($WORDS_FILE);
+$dict = json_decode($json, true, flags: JSON_OBJECT_AS_ARRAY);
+if (!is_array($dict) || empty($dict)) {
+    http_response_code(500);
+    echo "<h1>Error</h1><p>Could not read a valid dictionary from <code>words.json</code>.</p>";
+    exit;
+}
+
+// load audio map
+$audioMap = [];
+if (file_exists($AUDIOS_FILE)) {
+    $jsonAudios = file_get_contents($AUDIOS_FILE);
+    $audioMap = json_decode($jsonAudios, true, flags: JSON_OBJECT_AS_ARRAY) ?? [];
+}
+
+// ---- parse URL params ok/nok ----
+$okList  = isset($_GET['ok'])  ? json_decode($_GET['ok'], true)  : [];
+$nokList = isset($_GET['nok']) ? json_decode($_GET['nok'], true) : [];
+if (!is_array($okList))  $okList  = [];
+if (!is_array($nokList)) $nokList = [];
+
+// ---- pick/advance word ----
 if (!isset($_SESSION['current_key']) || isset($_POST['next'])) {
+    // candidate words = all - okList
     $keys = array_keys($dict);
-    $_SESSION['current_key'] = $keys[random_int(0, count($keys) - 1)];
+    $candidates = array_values(array_diff($keys, $okList));
+
+    if (count($candidates) > 0) {
+        $_SESSION['current_key'] = $candidates[random_int(0, count($candidates) - 1)];
+    } else {
+        $_SESSION['current_key'] = null; // all done
+    }
+
     $_SESSION['answered'] = false;
     $_SESSION['is_correct'] = null;
     $_SESSION['user_answer'] = '';
 }
-
 $currentKey = $_SESSION['current_key'];
-$answers = $dict[$currentKey] ?? [];
+$answers = $currentKey ? ($dict[$currentKey] ?? []) : [];
 
-// Resolve audio src
+// ---- audio ----
 $audioSrc = null;
-if (isset($audioMap[$currentKey])) {
+if ($currentKey && isset($audioMap[$currentKey])) {
     $file = trim((string)$audioMap[$currentKey]);
-    $audioSrc = '/audios/' . basename($file); // URL for browser
+    $audioSrc = '/audios/' . basename($file);
 }
 
-// Handle submission
-if (isset($_POST['answer']) && $_SESSION['answered'] !== true) {
+// ---- handle answer ----
+if ($currentKey && isset($_POST['answer']) && $_SESSION['answered'] !== true) {
     $userAnswer = (string)($_POST['answer'] ?? '');
     $_SESSION['user_answer'] = $userAnswer;
 
     $normUser = normalize_answer($userAnswer);
     $isCorrect = false;
-
     foreach ($answers as $a) {
         if ($normUser !== '' && normalize_answer((string)$a) === $normUser) {
             $isCorrect = true;
@@ -75,17 +87,33 @@ if (isset($_POST['answer']) && $_SESSION['answered'] !== true) {
 
     $_SESSION['answered'] = true;
     $_SESSION['is_correct'] = $isCorrect;
+
+    if ($isCorrect) {
+        if (!in_array($currentKey, $okList, true)) {
+            $okList[] = $currentKey;
+        }
+        // if it was wrong before and now correct → remove from nok
+        $nokList = array_values(array_diff($nokList, [$currentKey]));
+    } else {
+        if (!in_array($currentKey, $nokList, true)) {
+            $nokList[] = $currentKey;
+        }
+    }
+
+    // redirect com nova URL
+    $qs = http_build_query([
+        'ok'  => json_encode($okList, JSON_UNESCAPED_UNICODE),
+        'nok' => json_encode($nokList, JSON_UNESCAPED_UNICODE)
+    ]);
+    $base = strtok($_SERVER['REQUEST_URI'], '?');
+    header("Location: $base?$qs");
+    exit;
 }
 
-// Escape HTML
-function h(string $s): string {
-    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-}
-
-$answered = $_SESSION['answered'] ?? false;
-$isCorrect = $_SESSION['is_correct'] ?? null;
+// ---- view state ----
+$answered   = $_SESSION['answered'] ?? false;
+$isCorrect  = $_SESSION['is_correct'] ?? null;
 $userAnswer = $_SESSION['user_answer'] ?? '';
-
 ?>
 <!doctype html>
 <html lang="en">
@@ -119,42 +147,57 @@ $userAnswer = $_SESSION['user_answer'] ?? '';
   <div class="card">
     <h1>Czech → English Vocabulary Trainer</h1>
 
-    <div class="cz">
-      <?= h($currentKey) ?>
-      <?php if ($audioSrc !== null): ?>
-        <button type="button" class="icon" aria-label="Play pronunciation"
-          onclick="(function(){var a=document.getElementById('cz-audio'); if(a){a.currentTime=0; a.play();}})()">🔊</button>
-        <audio id="cz-audio" src="<?= h($audioSrc) ?>"></audio>
-      <?php endif; ?>
-    </div>
-    <div class="hint muted">Type a valid English meaning.</div>
-
-    <form method="post" class="row" autocomplete="off">
-      <input type="text" name="answer" placeholder="Your meaning in English" value="<?= h($userAnswer) ?>" <?= $answered ? 'disabled' : '' ?>>
-      <?php if (!$answered): ?>
-        <button type="submit" class="primary">Check</button>
-      <?php endif; ?>
-    </form>
-
-    <?php if ($answered): ?>
-      <?php if ($isCorrect): ?>
-        <div class="result ok">✅ Correct!</div>
-      <?php else: ?>
-        <div class="result bad">❌ Not quite. Try the next one.</div>
-      <?php endif; ?>
-
-      <div class="answers">
-        <div class="muted">Accepted answers:</div>
-        <div class="chips">
-          <?php foreach ($answers as $a): ?>
-            <span class="chip"><?= h($a) ?></span>
-          <?php endforeach; ?>
-        </div>
+    <?php if ($currentKey === null): ?>
+      <p>🎉 You finished all words!</p>
+        <a href="/" class="button">Back to home</a>
+    <?php else: ?>
+      <div class="cz">
+        <?= h($currentKey) ?>
+        <?php if ($audioSrc !== null): ?>
+          <button type="button" class="icon" aria-label="Play pronunciation"
+            onclick="(function(){var a=document.getElementById('cz-audio'); if(a){a.currentTime=0; a.play();}})()">🔊</button>
+          <audio id="cz-audio" src="<?= h($audioSrc) ?>"></audio>
+        <?php endif; ?>
       </div>
+      <div class="hint muted">Type a valid English meaning.</div>
 
-      <form method="post" class="footer">
-        <button type="submit" name="next" value="1" class="primary">Next word</button>
+      <form method="post" class="row" autocomplete="off">
+        <input type="text" name="answer" placeholder="Your meaning in English"
+               value="<?= h($userAnswer) ?>" <?= $answered ? 'disabled' : '' ?>>
+        <?php if (!$answered): ?>
+          <button type="submit" class="primary">Check</button>
+        <?php endif; ?>
       </form>
+
+      <?php if ($answered): ?>
+        <?php if ($isCorrect): ?>
+          <div class="result ok">✅ Correct!</div>
+        <?php else: ?>
+          <div class="result bad">❌ Not quite. Try the next one.</div>
+        <?php endif; ?>
+
+        <div class="answers">
+          <div class="muted">Accepted answers:</div>
+          <div class="chips">
+            <?php foreach ($answers as $a): ?>
+              <span class="chip"><?= h($a) ?></span>
+            <?php endforeach; ?>
+          </div>
+        </div>
+
+        <form method="post" class="footer">
+          <button type="submit" name="next" value="1" class="primary">Next word</button>
+        </form>
+      <?php endif; ?>
+
+    <?php
+    $totalWords = count($dict);
+    $correctCount = count($okList);
+    ?>
+    <div class="muted" style="margin-top:20px">
+      📊 You got <?= $correctCount ?> / <?= $totalWords ?> words
+    </div>
+
     <?php endif; ?>
   </div>
 </body>
