@@ -14,15 +14,19 @@ mb_internal_encoding('UTF-8');
     .card { max-width: 720px; margin: 0 auto; padding: 32px; border: 1px solid #ddd; border-radius: 16px; box-shadow: 0 3px 12px rgba(0,0,0,0.06); text-align: center; }
     h1 { margin-top: 0; font-size: 1.8rem; }
     p { color: #555; margin-bottom: 24px; }
-    a.button { display: inline-block; padding: 14px 28px; font-size: 1.1rem; border-radius: 12px; background: #111; color: #fff; text-decoration: none; }
+    .buttons { display: flex; justify-content: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    a.button { display: inline-block; padding: 14px 28px; font-size: 1.1rem; border-radius: 12px; background: #111; color: #fff; text-decoration: none; transition: background 0.2s; }
     a.button:hover { background: #333; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Czech Vocabulary Trainer</h1>
-    <p>Practice your Czech vocabulary through different levels.</p>
-    <a href="/czech1" class="button">Level 1</a>
+    <p>Practice your Czech vocabulary through different levels and directions.</p>
+    <div class="buttons">
+      <a href="/level1/Czech-to-English.php" class="button">🇨🇿 Czech → English</a>
+      <a href="/level1/English-to-Czech.php" class="button">🇬🇧 English → Czech</a>
+    </div>
     <p>Once I learn more I'll add more levels...</p>
   </div>
 </body>
