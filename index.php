@@ -23,9 +23,15 @@ mb_internal_encoding('UTF-8');
   <div class="card">
     <h1>Czech Vocabulary Trainer</h1>
     <p>Practice your Czech vocabulary through different levels and directions.</p>
+    <p>Level 1</p>
     <div class="buttons">
       <a href="/level1/Czech-to-English.php" class="button">🇨🇿 Czech → English</a>
       <a href="/level1/English-to-Czech.php" class="button">🇬🇧 English → Czech</a>
+    </div>
+    <p>Level 2 (in progress...)</p>
+    <div class="buttons">
+      <a href="/level2/Czech-to-English.php" class="button">🇨🇿 Czech → English</a>
+      <a href="/level2/English-to-Czech.php" class="button">🇬🇧 English → Czech</a>
     </div>
     <p>Once I learn more I'll add more levels...</p>
   </div>
